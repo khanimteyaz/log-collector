@@ -7,8 +7,11 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.servlet.http.HttpServletRequest;
+import org.my.infra.log.collector.model.UniqueException;
+import org.my.infra.log.collector.repository.UniqueExceptionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,6 +34,9 @@ public class LogGeneratorController {
 
     private Set<String> uniqueExceptions= new HashSet<>();
 
+    @Autowired
+    private UniqueExceptionRepository uniqueExceptionRepository;
+
     @RequestMapping(method = RequestMethod.POST)
     public ResponseEntity<String> logRest(HttpServletRequest request){
         System.out.println("Received data");
@@ -45,7 +51,9 @@ public class LogGeneratorController {
             if(uniqueExceptions.contains(normalizeStackTrace)) {
                 System.out.println(String.format("Exception already exists :::%s",normalizeStackTrace.substring(0,40)));
             } else {
-                System.out.println(String.format("New exception encounter :::%s",normalizeStackTrace));
+                UniqueException uniqueException=buildUniqueException(normalizeStackTrace);
+                uniqueException=uniqueExceptionRepository.save(uniqueException);
+                LOGGER.info("Unique exception saved in db with id %d",uniqueException.getId());
             }
             uniqueExceptions.add(normalizeStackTrace);
         } catch (Exception e) {
@@ -67,5 +75,11 @@ public class LogGeneratorController {
             return Optional.of(m.group(EXCEPTION_GROUP));
         }
         return Optional.empty();
+    }
+
+    private UniqueException buildUniqueException(String normalizeException) {
+        UniqueException uniqueException = new UniqueException();
+        uniqueException.setException(normalizeException);
+        return uniqueException;
     }
 }
