@@ -7,7 +7,6 @@ import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
-import javax.persistence.Lob;
 import javax.persistence.Table;
 
 @Entity
@@ -18,7 +17,10 @@ public class UniqueException {
     @Column(name = "id", updatable = false, nullable = false)
     protected long id;
 
-    @Column(name="exception")
+    @Column(name="exception_hash",unique = true)
+    private String exceptionHash;
+
+    @Column(name = "exception")
     private String exception;
 
     public UniqueException() {
@@ -33,6 +35,14 @@ public class UniqueException {
         this.id = id;
     }
 
+    public String getExceptionHash() {
+        return exceptionHash;
+    }
+
+    public void setExceptionHash(String exceptionHash) {
+        this.exceptionHash = exceptionHash;
+    }
+
     public String getException() {
         return exception;
     }
@@ -40,6 +50,7 @@ public class UniqueException {
     public void setException(String exception) {
         this.exception = exception;
     }
+
 
     @Override
     public boolean equals(Object o) {
@@ -63,6 +74,7 @@ public class UniqueException {
     public String toString() {
         final StringBuilder sb = new StringBuilder("UniqueException{");
         sb.append("id=").append(id);
+        sb.append(", exceptionHash='").append(exceptionHash).append('\'');
         sb.append(", exception='").append(exception).append('\'');
         sb.append('}');
         return sb.toString();
