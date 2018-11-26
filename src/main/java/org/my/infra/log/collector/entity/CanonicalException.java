@@ -1,11 +1,16 @@
-package org.my.infra.log.collector.model;
+package org.my.infra.log.collector.entity;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
+import javax.persistence.OneToMany;
 import javax.persistence.OneToOne;
 import javax.persistence.Table;
 
@@ -22,6 +27,9 @@ public class CanonicalException {
 
     @Column(name="exception",length = 10000)
     private String exception;
+
+    @OneToMany(mappedBy = "canonicalException",cascade = CascadeType.ALL)
+    private List<JiraIssue> issues= new ArrayList<>();
 
     @OneToOne
     private UniqueException uniqueException;
@@ -56,6 +64,18 @@ public class CanonicalException {
 
     public void setUniqueException(UniqueException uniqueException) {
         this.uniqueException = uniqueException;
+    }
+
+    public void addJiraIssue(JiraIssue jiraIssue) {
+        this.issues.add(jiraIssue);
+    }
+
+    public Optional<JiraIssue> getOpenJiraIssue(String source, String app) {
+        return this.issues.stream().filter(issue->
+            issue.getSource().equals(source)
+                && issue.getApp().equals(app)
+                && issue.getStatus().equals("OPEN")
+        ).findFirst();
     }
 
     @Override

@@ -1,9 +1,10 @@
-package org.my.infra.log.collector.model;
+package org.my.infra.log.collector.entity;
 
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -70,9 +71,14 @@ public class UniqueException {
         this.exceptionVersions.add(canonicalException);
     }
 
-    public boolean isCanonicalExceptionAlreadyExists(CanonicalException canonicalException) {
-        return exceptionVersions.stream().anyMatch(ce-> ce.getExceptionSubVersionHash().
-            equals(canonicalException.getExceptionSubVersionHash()));
+    public CanonicalException getCanonicalException(String hash) {
+       return  this.exceptionVersions.stream()
+            .filter(ce->ce.getExceptionSubVersionHash().equals(hash))
+            .findFirst().get();
+    }
+    public boolean isCanonicalExceptionAlreadyExists(String hash) {
+        return this.exceptionVersions.stream().anyMatch(ce-> ce.getExceptionSubVersionHash().
+            equals(hash));
     }
     @Override
     public boolean equals(Object o) {
