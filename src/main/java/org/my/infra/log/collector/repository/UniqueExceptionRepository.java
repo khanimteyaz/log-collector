@@ -6,5 +6,6 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface UniqueExceptionRepository extends JpaRepository<UniqueException,Long> {
-    public UniqueException findByExceptionHash(String exceptionHash);
+    UniqueException findByExceptionHash(String exceptionHash);
+    boolean existsByExceptionHash(String exceptionHash);
 }

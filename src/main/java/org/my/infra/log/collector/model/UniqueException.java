@@ -1,12 +1,16 @@
 package org.my.infra.log.collector.model;
 
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
+import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
+import javax.persistence.OneToMany;
 import javax.persistence.Table;
 
 @Entity
@@ -15,13 +19,16 @@ public class UniqueException {
     @Id
     @GeneratedValue(strategy = GenerationType.AUTO)
     @Column(name = "id", updatable = false, nullable = false)
-    protected long id;
+    private long id;
 
     @Column(name="exception_hash",unique = true)
     private String exceptionHash;
 
-    @Column(name = "exception")
-    private String exception;
+    @Column(name = "normalize_exception",length = 10000)
+    private String normalizeException;
+
+    @OneToMany(mappedBy = "uniqueException",cascade = CascadeType.ALL)
+    private List<CanonicalException> exceptionVersions= new ArrayList<>();
 
     public UniqueException() {
 
@@ -43,15 +50,30 @@ public class UniqueException {
         this.exceptionHash = exceptionHash;
     }
 
-    public String getException() {
-        return exception;
+    public String getNormalizeException() {
+        return normalizeException;
     }
 
-    public void setException(String exception) {
-        this.exception = exception;
+    public void setNormalizeException(String normalizeException) {
+        this.normalizeException = normalizeException;
     }
 
+    public List<CanonicalException> getExceptionVersions() {
+        return exceptionVersions;
+    }
 
+    public void setExceptionVersions(List<CanonicalException> exceptionVersions) {
+        this.exceptionVersions = exceptionVersions;
+    }
+
+    public void addExceptionVersion(CanonicalException canonicalException) {
+        this.exceptionVersions.add(canonicalException);
+    }
+
+    public boolean isCanonicalExceptionAlreadyExists(CanonicalException canonicalException) {
+        return exceptionVersions.stream().anyMatch(ce-> ce.getExceptionSubVersionHash().
+            equals(canonicalException.getExceptionSubVersionHash()));
+    }
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -75,7 +97,7 @@ public class UniqueException {
         final StringBuilder sb = new StringBuilder("UniqueException{");
         sb.append("id=").append(id);
         sb.append(", exceptionHash='").append(exceptionHash).append('\'');
-        sb.append(", exception='").append(exception).append('\'');
+        sb.append(", normalizeException='").append(normalizeException).append('\'');
         sb.append('}');
         return sb.toString();
     }

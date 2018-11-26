@@ -3,6 +3,7 @@ package org.my.infra.log.collector.service;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.my.infra.log.collector.model.CanonicalException;
 import org.my.infra.log.collector.model.UniqueException;
 import org.my.infra.log.collector.repository.UniqueExceptionRepository;
 import org.slf4j.Logger;
@@ -33,22 +34,55 @@ public class LogCollectorService {
     }
 
     public boolean process(String exception) {
-        String stackTraceMessage=getStacktraceMsg(exception.toString()).get();
-        String md5OfStacktrace=md5Of(removeLineNumber(stackTraceMessage));
+        String originalExceptionStr=getStacktraceMsg(exception.toString()).get();
+        String normalizeExceptionStr=removeLineNumber(originalExceptionStr);
+        String md5OfStacktrace=md5Of(normalizeExceptionStr);
         System.out.println(String.format("Md5 of exception is %s",md5OfStacktrace));
-        UniqueException uniqueException=uniqueExceptionRepository.findByExceptionHash(md5OfStacktrace);
-        if(uniqueException!=null) {
-            System.out.println(String.format("Exception already exists :::%s",stackTraceMessage.substring(0,40)));
+        if(uniqueExceptionRepository.existsByExceptionHash(md5OfStacktrace)) {
+            System.out.println(String.format("Exception already exists :::%s",normalizeExceptionStr.substring(0,40)));
+            updateExisting(normalizeExceptionStr,originalExceptionStr);
         } else {
-            System.out.println(String.format("New exception encounter %s",stackTraceMessage));
-            uniqueException=buildUniqueException(stackTraceMessage);
-            uniqueException.setExceptionHash(md5OfStacktrace);
-            uniqueException=uniqueExceptionRepository.save(uniqueException);
-            LOGGER.info(String.format("Unique exception saved in db with id %d",uniqueException.getId()));
+            System.out.println(String.format("New exception encounter %s",normalizeExceptionStr));
+            saveAsNew(normalizeExceptionStr,originalExceptionStr);
         }
         return true;
     }
 
+    private UniqueException saveAsNew(String normalize,String original) {
+        UniqueException uniqueException = buildUniqueException(md5Of(normalize), normalize);
+        uniqueException.addExceptionVersion(buildCanonicalException(original,uniqueException));
+        uniqueException=uniqueExceptionRepository.save(uniqueException);
+        LOGGER.info(String.format("Unique exception saved in db with id %d",uniqueException.getId()));
+        return uniqueException;
+    }
+
+    private boolean updateExisting(String normalize,String original) {
+        UniqueException savedUniqueException= uniqueExceptionRepository.findByExceptionHash(md5Of(normalize));
+        CanonicalException canonicalException=buildCanonicalException(original,savedUniqueException);
+        if(savedUniqueException.isCanonicalExceptionAlreadyExists(canonicalException)) {
+            LOGGER.info("Canonical exception {} is already attached to {}"
+                ,canonicalException.getExceptionSubVersionHash(),savedUniqueException.getExceptionHash());
+        } else {
+            savedUniqueException.addExceptionVersion(canonicalException);
+            uniqueExceptionRepository.save(savedUniqueException);
+            LOGGER.info("Attached the new version of exception {} into root exception {}",canonicalException,savedUniqueException);
+        }
+        return true;
+    }
+    private UniqueException buildUniqueException(String md5, String normalize) {
+        UniqueException uniqueException=buildUniqueException(normalize);
+        uniqueException.setExceptionHash(md5);
+        return uniqueException;
+    }
+
+    private CanonicalException buildCanonicalException(String exception,UniqueException uniqueException){
+        String md5=md5Of(exception);
+        CanonicalException canonicalException = new CanonicalException();
+        canonicalException.setExceptionSubVersionHash(md5);
+        canonicalException.setException(exception.substring(0,substrLength(exception)));
+        canonicalException.setUniqueException(uniqueException);
+        return canonicalException;
+    }
     private String removeLineNumber(String stackTrace) {
         if(StringUtils.isEmpty(stackTrace)) {
             return "";
@@ -65,10 +99,13 @@ public class LogCollectorService {
 
     private UniqueException buildUniqueException(String normalizeException) {
         UniqueException uniqueException = new UniqueException();
-        uniqueException.setException(normalizeException);
+        uniqueException.setNormalizeException(normalizeException.substring(0,substrLength(normalizeException)));
         return uniqueException;
     }
 
+    private int substrLength(String str) {
+        return str.length()<10000?str.length():10000;
+    }
     private  String md5Of(String content) {
         return DigestUtils.md5DigestAsHex(content.getBytes());
     }
