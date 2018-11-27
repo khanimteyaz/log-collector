@@ -3,6 +3,8 @@ package org.my.infra.log.collector.controller;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.Map;
 import javax.servlet.http.HttpServletRequest;
 import org.my.infra.log.collector.service.LogCollectorService;
 import org.slf4j.Logger;
@@ -25,10 +27,12 @@ public class LogGeneratorController {
     public ResponseEntity<String> logRest(HttpServletRequest request) throws IOException {
         System.out.println("Received data");
         Enumeration<String> headers=request.getHeaderNames();
+        Map<String,String> headerMap=new HashMap<>();
         while(headers.hasMoreElements()) {
             String key=headers.nextElement();
             String value=request.getHeader(key);
             System.out.println(key+"===>>"+value);
+            headerMap.put(key,value);
         }
         StringBuilder buffer = new StringBuilder();
         BufferedReader reader = request.getReader();
@@ -36,7 +40,7 @@ public class LogGeneratorController {
         while ((line = reader.readLine()) != null) {
             buffer.append(line);
         }
-        logCollectorService.process(buffer.toString());
+        logCollectorService.process(buffer.toString(),headerMap);
         return ResponseEntity.accepted().build();
     }
 }

@@ -7,7 +7,6 @@ import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
 import javax.persistence.GenerationType;
 import javax.persistence.Id;
-import javax.persistence.Index;
 import javax.persistence.Table;
 
 @Entity
@@ -23,6 +22,18 @@ public class ExceptionOccurrence {
 
     @Column(name="occurred_at")
     private Timestamp occurredAt;
+
+    @Column(name="app")
+    private String app;
+
+    @Column(name="source")
+    private String source;
+
+    @Column(name="host")
+    private String host;
+
+    @Column(name="other_info",length = 1000)
+    private String otherInfos;
 
     public ExceptionOccurrence() {
 
@@ -52,6 +63,38 @@ public class ExceptionOccurrence {
         this.occurredAt = occurredAt;
     }
 
+    public String getApp() {
+        return app;
+    }
+
+    public void setApp(String app) {
+        this.app = app;
+    }
+
+    public String getSource() {
+        return source;
+    }
+
+    public void setSource(String source) {
+        this.source = source;
+    }
+
+    public String getHost() {
+        return host;
+    }
+
+    public void setHost(String host) {
+        this.host = host;
+    }
+
+    public String getOtherInfos() {
+        return otherInfos;
+    }
+
+    public void setOtherInfos(String otherInfos) {
+        this.otherInfos = otherInfos;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -76,6 +119,10 @@ public class ExceptionOccurrence {
         sb.append("id=").append(id);
         sb.append(", jiraId='").append(jiraId).append('\'');
         sb.append(", occurredAt=").append(occurredAt);
+        sb.append(", app='").append(app).append('\'');
+        sb.append(", source='").append(source).append('\'');
+        sb.append(", host='").append(host).append('\'');
+        sb.append(", otherInfos='").append(otherInfos).append('\'');
         sb.append('}');
         return sb.toString();
     }

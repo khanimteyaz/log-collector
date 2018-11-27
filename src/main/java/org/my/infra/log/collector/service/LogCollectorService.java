@@ -1,12 +1,17 @@
 package org.my.infra.log.collector.service;
 
 import java.sql.Timestamp;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.my.infra.log.collector.entity.CanonicalException;
+import org.my.infra.log.collector.entity.ExceptionOccurrence;
 import org.my.infra.log.collector.entity.JiraIssue;
 import org.my.infra.log.collector.entity.UniqueException;
+import org.my.infra.log.collector.model.LogEvent;
+import org.my.infra.log.collector.repository.ExceptionOccurrenceRepository;
 import org.my.infra.log.collector.repository.UniqueExceptionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,22 +20,27 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
 import org.springframework.util.StringUtils;
 
+import static org.my.infra.log.collector.constant.EventRegexParseConstant.EXCEPTION_REGEX_EXP;
+import static org.my.infra.log.collector.constant.EventRegexParseConstant.STACK_TRACE_LINENUMBER_REGEX;
+import static org.my.infra.log.collector.constant.EventRegexParseConstant.EVENT_TIME_GROUP;
+import static org.my.infra.log.collector.constant.EventRegexParseConstant.EXCEPTION_GROUP;
+import static org.my.infra.log.collector.constant.EventRegexParseConstant.HOST_GROUP;
+
+import static org.my.infra.log.collector.constant.LogPropertyConstant.APP_NAME;
+import static org.my.infra.log.collector.constant.LogPropertyConstant.SOURCE;
+
 @Service
 public class LogCollectorService {
 
     private Logger LOGGER=LoggerFactory.getLogger(this.getClass());
-    private static final String EXCEPTION_REGEX_EXP="(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}).\\d{3}" +
-        "[\\s]+(INFO|TRACE|ERROR|DEBUG|WARNING|FATAL)" +
-        "[\\s]+(.*)---[\\s]+\\[(.*)\\][\\s]+(.*)";
-
-    private static final String STACK_TRACE_LINENUMBER_REGEX="(:[\\d]+)";
-
-    private final int EXCEPTION_GROUP=5;
 
     private Pattern regex = Pattern.compile(EXCEPTION_REGEX_EXP, Pattern.MULTILINE);
 
     @Autowired
     private UniqueExceptionRepository uniqueExceptionRepository;
+
+    @Autowired
+    private ExceptionOccurrenceRepository exceptionOccurrenceRepository;
 
     @Autowired
     private JiraService jiraService;
@@ -39,8 +49,9 @@ public class LogCollectorService {
 
     }
 
-    public boolean process(String exception) {
-        String original=getStacktraceMsg(exception).get();
+    public boolean process(String exception,Map<String,String> headers) {
+        LogEvent logEvent=parseEvent(exception,headers);
+        String original= logEvent.getStackTraceWithLineNo();
         String normalizeExceptionStr=removeLineNumber(original);
         String uniqueHash=md5Of(normalizeExceptionStr);
         String subHash=md5Of(original);
@@ -52,8 +63,23 @@ public class LogCollectorService {
             System.out.println(String.format("New exception encounter %s",normalizeExceptionStr));
             saveAsNew(normalizeExceptionStr,original);
         }
-        updateJiraIssue(uniqueHash,subHash,"source1","app1",original);
+        updateJiraIssue(uniqueHash,subHash,logEvent);
+        addExceptionOccurence(uniqueHash,subHash,logEvent);
         return true;
+    }
+
+    private LogEvent parseEvent(String exception,Map<String,String> eventProperty) {
+        Map<Integer,String> logEntryMap= parseRawEvent(exception);
+        LogEvent event= new LogEvent();
+        event.setAppName(eventProperty.get(APP_NAME));
+        event.setSource(eventProperty.get(SOURCE));
+        event.setHost(logEntryMap.get(HOST_GROUP));
+        event.setEventTime(Timestamp.valueOf(logEntryMap.get(EVENT_TIME_GROUP)));
+        event.setStackTraceWithLineNo(logEntryMap.get(EXCEPTION_GROUP));
+        event.setStackTraceWithoutLineNo(removeLineNumber(event.getStackTraceWithLineNo()));
+        event.setExceptionAsString(exception);
+        event.setOtherInfos(eventProperty);
+        return event;
     }
 
     private UniqueException saveAsNew(String normalize,String original) {
@@ -84,34 +110,55 @@ public class LogCollectorService {
 
     private void createTicket(String uniqueHash
         ,String subHash
-        ,String source
-        ,String app
-        ,String exception) {
+        ,LogEvent logEvent) {
 
-        String jiraId=jiraService.createNewIssue(buildJiraTitle(source,app,exception),exception);
+        String jiraId=jiraService.createNewIssue(buildJiraTitle(logEvent),logEvent.getExceptionAsString());
         LOGGER.info("Created new JIRA ticket with id {} ",jiraId);
         UniqueException savedUniqueException= uniqueExceptionRepository.findByExceptionHash(uniqueHash);
         CanonicalException canonicalException=savedUniqueException.getCanonicalException(subHash);
-        canonicalException.addJiraIssue(buildJiraIssue(jiraId
-            ,"source1"
-            ,"app1",exception
-            ,Timestamp.valueOf("2038-01-19 03:14:07"),canonicalException));
+        canonicalException.addJiraIssue(buildJiraIssue(jiraId,logEvent,canonicalException));
         uniqueExceptionRepository.save(savedUniqueException);
         LOGGER.info("Attached the jira id {} in repository",jiraId);
 
     }
-    private void updateJiraIssue(String uniqueHash,String subHash,String source,String app,String original) {
 
-        CanonicalException canonicalException;
-        UniqueException savedUniqueException= uniqueExceptionRepository.findByExceptionHash(uniqueHash);
-        canonicalException=savedUniqueException.getCanonicalException(md5Of(original));
-        Optional<JiraIssue> jiraIssue = canonicalException.getOpenJiraIssue(source,app);
+    private void updateExistingTicket(String jiraId,String comment) {
+        LOGGER.info("Updating existing JIRA id {} with new event details",jiraId);
+        jiraService.updateIssue(jiraId,comment);
+        LOGGER.info("JIRA id {} updated successfully",jiraId);
+    }
+    private void updateJiraIssue(String uniqueHash,String subHash,LogEvent logEvent) {
+
+        Optional<JiraIssue> jiraIssue = getJiraIssue(uniqueHash,subHash
+            , logEvent.getSource()
+            , logEvent.getAppName());
+
         if(!jiraIssue.isPresent()) {
-            createTicket(uniqueHash,subHash,source,app,original);
+            createTicket(uniqueHash,subHash,logEvent);
+        } else {
+            updateExistingTicket(jiraIssue.get().getJiraId(),logEvent.getExceptionAsString());
         }
 
     }
 
+    private Optional<JiraIssue> getJiraIssue(String uniqueHash,String subHash, String source, String app) {
+        UniqueException savedUniqueException= uniqueExceptionRepository.findByExceptionHash(uniqueHash);
+        CanonicalException canonicalException=savedUniqueException.getCanonicalException(subHash);
+        return canonicalException.getOpenJiraIssue(source,app);
+    }
+
+    private void addExceptionOccurence(String uniqueHash,String subHash,LogEvent logEvent) {
+        Optional<JiraIssue> jiraIssue = getJiraIssue(uniqueHash,subHash,logEvent.getSource(),logEvent.getAppName());
+        ExceptionOccurrence occurrence = new ExceptionOccurrence();
+        occurrence.setJiraId(jiraIssue.get().getJiraId());
+        occurrence.setOccurredAt(logEvent.getEventTime());
+        occurrence.setApp(logEvent.getAppName());
+        occurrence.setSource(logEvent.getSource());
+        occurrence.setHost(logEvent.getHost());
+        occurrence.setOtherInfos(logEvent.getOtherInfos().toString());
+        occurrence=exceptionOccurrenceRepository.save(occurrence);
+        LOGGER.info("Occurrence {} has been added into db",occurrence);
+    }
     private UniqueException buildUniqueException(String md5, String normalize) {
         UniqueException uniqueException=buildUniqueException(normalize);
         uniqueException.setExceptionHash(md5);
@@ -128,16 +175,13 @@ public class LogCollectorService {
     }
 
     private JiraIssue buildJiraIssue(String jiraId
-                                     ,String source
-                                     ,String app
-                                     ,String exception
-                                     ,Timestamp createdAt
+                                     ,LogEvent logEvent
                                      ,CanonicalException canonicalException) {
         JiraIssue jiraIssue = new JiraIssue();
         jiraIssue.setJiraId(jiraId);
-        jiraIssue.setSource(source);
-        jiraIssue.setApp(app);
-        jiraIssue.setStartAt(createdAt);
+        jiraIssue.setSource(logEvent.getSource());
+        jiraIssue.setApp(logEvent.getAppName());
+        jiraIssue.setStartAt(logEvent.getEventTime());
         jiraIssue.setCanonicalException(canonicalException);
         jiraIssue.setStatus("OPEN");
         return jiraIssue;
@@ -149,12 +193,16 @@ public class LogCollectorService {
         }
         return stackTrace.replaceAll(STACK_TRACE_LINENUMBER_REGEX,"") ;
     }
-    private Optional<String> getStacktraceMsg(String logEventMsg) {
+    private Map<Integer,String> parseRawEvent(String logEventMsg) {
+        Map<Integer,String> parseGroup=new HashMap<>();
         Matcher m = regex.matcher(logEventMsg);
+
         if(m.matches()) {
-            return Optional.of(m.group(EXCEPTION_GROUP));
+            parseGroup.put(EVENT_TIME_GROUP,m.group(EVENT_TIME_GROUP));
+            parseGroup.put(HOST_GROUP,m.group(HOST_GROUP));
+            parseGroup.put(EXCEPTION_GROUP,m.group(EXCEPTION_GROUP));
         }
-        return Optional.empty();
+        return parseGroup;
     }
 
     private UniqueException buildUniqueException(String normalizeException) {
@@ -170,11 +218,12 @@ public class LogCollectorService {
         return DigestUtils.md5DigestAsHex(content.getBytes());
     }
 
-    private String buildJiraTitle(String source,String app,String exception) {
-        return source +
+    private String buildJiraTitle(LogEvent logEvent) {
+        return logEvent.getSource() +
             "-" +
-            app +
+            logEvent.getAppName() +
             "-" +
-            exception.substring(0,substrLength(exception,5));
+            logEvent.getStackTraceWithoutLineNo().substring(0
+                ,substrLength(logEvent.getStackTraceWithoutLineNo(),5));
     }
 }
