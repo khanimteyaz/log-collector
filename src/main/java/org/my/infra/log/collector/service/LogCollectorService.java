@@ -55,7 +55,8 @@ public class LogCollectorService {
         String normalizeExceptionStr=removeLineNumber(original);
         String uniqueHash=md5Of(normalizeExceptionStr);
         String subHash=md5Of(original);
-        System.out.println(String.format("Md5 of exception is %s",uniqueHash));
+        System.out.println("logEvent = " + logEvent);
+        /*System.out.println(String.format("Md5 of exception is %s",uniqueHash));
         if(uniqueExceptionRepository.existsByExceptionHash(uniqueHash)) {
             System.out.println(String.format("Exception already exists :::%s",normalizeExceptionStr.substring(0,40)));
             updateExisting(normalizeExceptionStr,original);
@@ -64,7 +65,7 @@ public class LogCollectorService {
             saveAsNew(normalizeExceptionStr,original);
         }
         updateJiraIssue(uniqueHash,subHash,logEvent);
-        addExceptionOccurence(uniqueHash,subHash,logEvent);
+        addExceptionOccurence(uniqueHash,subHash,logEvent);*/
         return true;
     }
 
@@ -112,7 +113,9 @@ public class LogCollectorService {
         ,String subHash
         ,LogEvent logEvent) {
 
-        String jiraId=jiraService.createNewIssue(buildJiraTitle(logEvent),logEvent.getExceptionAsString());
+        String jiraId=jiraService.createNewIssue(logEvent.getSource()
+            ,buildJiraTitle(logEvent)
+            ,logEvent.getExceptionAsString());
         LOGGER.info("Created new JIRA ticket with id {} ",jiraId);
         UniqueException savedUniqueException= uniqueExceptionRepository.findByExceptionHash(uniqueHash);
         CanonicalException canonicalException=savedUniqueException.getCanonicalException(subHash);

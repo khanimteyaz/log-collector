@@ -2,42 +2,53 @@ package org.my.infra.log.collector.service;
 
 import com.atlassian.jira.rest.client.api.IssueRestClient;
 import com.atlassian.jira.rest.client.api.JiraRestClient;
-import com.atlassian.jira.rest.client.api.domain.BasicProject;
 import com.atlassian.jira.rest.client.api.domain.Comment;
 import com.atlassian.jira.rest.client.api.domain.Issue;
-import com.atlassian.jira.rest.client.api.domain.IssueType;
-import com.atlassian.jira.rest.client.api.domain.Project;
 import com.atlassian.jira.rest.client.api.domain.input.IssueInput;
 import com.atlassian.jira.rest.client.api.domain.input.IssueInputBuilder;
 import com.atlassian.jira.rest.client.internal.async.AsynchronousJiraRestClientFactory;
-import com.atlassian.util.concurrent.Promise;
 import java.net.URI;
+import org.my.infra.log.collector.entity.ProjectMetadata;
+import org.my.infra.log.collector.repository.ProjectMetadataRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 public class JiraService {
 
-    private String username="demo";
-    private String password="demo";
-    private String jiraUrl="http://localhost:8050";
-    private String projectKey="TEST";
-    private long ISSUE_TYPE_BUG=10004L;
-    private JiraRestClient restClient;
+    private final String username;
+    private final String password;
+    private final String jiraUrl;
+    private final long jiraIssueTypeId;
+    private ProjectMetadataRepository projectMetadataRepository;
 
-    public JiraService() {
+    private final JiraRestClient restClient;
+
+    public JiraService(@Value("${app.jira.username}") final String username
+        ,@Value("${app.jira.password}") final String password
+        ,@Value("${app.jira.url}") final String jiraUrl
+        ,@Value("${app.jira.issue.type.id}") final String jiraTypeIdStr
+        ,@Autowired ProjectMetadataRepository projectMetadataRepository) {
+        this.username=username;
+        this.password=password;
+        this.jiraUrl=jiraUrl;
+        this.jiraIssueTypeId=Long.parseLong(jiraTypeIdStr);
+        this.projectMetadataRepository=projectMetadataRepository;
         this.restClient = getJiraRestClient();
     }
 
-    public String createNewIssue(String title, String description) {
+    public String createNewIssue(String source,String title,String description) {
         IssueRestClient issueClient = restClient.getIssueClient();
-        IssueInput newIssue = new IssueInputBuilder(projectKey,ISSUE_TYPE_BUG,title)
+        String projectKey=projectId(source);
+        IssueInput newIssue = new IssueInputBuilder(projectKey, jiraIssueTypeId, title)
             .setDescription(description)
             .build();
         return issueClient.createIssue(newIssue).claim().getKey();
     }
 
     public void updateIssue(String jiraId, String commentBody) {
-        Issue issue=getIssue(jiraId);
+        Issue issue = getIssue(jiraId);
         restClient.getIssueClient().addComment(issue.getCommentsUri(), Comment.valueOf(commentBody));
     }
 
@@ -46,7 +57,10 @@ public class JiraService {
         return restClient.getIssueClient().getIssue(issueKey).claim();
     }
 
-
+    private String projectId(String source) {
+         ProjectMetadata metadata=projectMetadataRepository.findBySource(source);
+         return metadata==null?null:metadata.getProjectKey();
+    }
     private JiraRestClient getJiraRestClient() {
         return new AsynchronousJiraRestClientFactory()
             .createWithBasicHttpAuthentication(getJiraUri(), this.username, this.password);
