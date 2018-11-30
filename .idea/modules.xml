@@ -2,6 +2,9 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
+      <module fileurl="file://$PROJECT_DIR$/collector-core/collector-core.iml" filepath="$PROJECT_DIR$/collector-core/collector-core.iml" />
+      <module fileurl="file://$PROJECT_DIR$/collector-http/collector-http.iml" filepath="$PROJECT_DIR$/collector-http/collector-http.iml" />
+      <module fileurl="file://$PROJECT_DIR$/collector-socket/collector-socket.iml" filepath="$PROJECT_DIR$/collector-socket/collector-socket.iml" />
       <module fileurl="file://$PROJECT_DIR$/log-collector.iml" filepath="$PROJECT_DIR$/log-collector.iml" />
     </modules>
   </component>
