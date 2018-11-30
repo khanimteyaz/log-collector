@@ -6,10 +6,15 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
-        <module name="log-collector" />
+        <module name="collector-core" />
+        <module name="collector-http" />
+        <module name="collector-socket" />
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
+      <module name="collector-core" target="1.8" />
+      <module name="collector-http" target="1.8" />
+      <module name="collector-socket" target="1.8" />
       <module name="log-collector" target="1.8" />
     </bytecodeTargetLevel>
   </component>
